@@ -22,7 +22,6 @@ st.sidebar.header("Parâmetros do Investidor")
 investment_amount = st.sidebar.number_input("Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
 risk_free_annual = st.sidebar.number_input("Taxa Livre de Risco Anual (%)", value=10.75, step=0.1) / 100
 
-# ALTERAÇÃO 1: Adicionada a nota explicativa (tooltip)
 test_days = st.sidebar.number_input(
     "Dias de Backtest (Out-of-Sample)", 
     value=252, 
@@ -81,8 +80,8 @@ def solve_max_sharpe(mu, cov, rf):
         return -((ret - rf) / (vol + 1e-12))
     
     w0 = np.ones(n)/n
-    # Limite máximo de 30% por ativo
-    bounds = [(0.0, 0.30)] * n 
+    # ALTERAÇÃO: Removida a trava de 30%. Agora permite até 100% (1.0)
+    bounds = [(0.0, 1.0)] * n 
     cons = ({'type':'eq', 'fun': lambda w: np.sum(w) - 1.0},)
     
     res = minimize(neg_sharpe, w0, method='SLSQP', bounds=bounds, constraints=cons)
@@ -138,7 +137,7 @@ def show_intro():
 
     1.  **Clusterização (Machine Learning):** Utilização do algoritmo *K-Means* para agrupar os ativos com base em risco (Volatilidade) e retorno.
     2.  **Stock Picking Quantitativo:** Seleção do melhor ativo de cada cluster para garantir diversificação estrutural.
-    3.  **Otimização de Markowitz:** Definição dos pesos ideais com **restrição máxima de 30% por ativo** para evitar concentração.
+    3.  **Otimização de Markowitz:** Definição matemática dos pesos ideais (Max Sharpe) sem restrição de concentração, permitindo alocação livre nos melhores ativos.
     4.  **Backtesting (Walk-Forward):** Validação da estratégia "fora da amostra" comparando com o Benchmark (Média do Universo).
     """)
 
@@ -148,8 +147,7 @@ if st.sidebar.button("Rodar Otimização"):
         
         prices = load_data(TICKERS, periodo_download)
         
-        # ALTERAÇÃO 2: Verificação mais flexível (Backtest + 6 meses de treino)
-        # Permite rodar '2y' com '252' dias de teste sem erro.
+        # Verificação flexível de dados
         if prices.empty or len(prices) < test_days + 126:
             st.error(f"Dados insuficientes. Para um Backtest de {test_days} dias, precisamos de um histórico maior (pelo menos {test_days + 126} dias no total). Tente selecionar '5y' ou diminua os dias de Backtest.")
             st.stop()
@@ -200,7 +198,7 @@ if st.sidebar.button("Rodar Otimização"):
             sel_a.extend(rest["Ticker"].head(5 - len(sel_a)).tolist())
         sel_a = sel_a[:5]
         
-        # Markowitz (Top 10 -> Top 5 com limite 30%)
+        # Markowitz (Livre)
         top_10 = metrics.sort_values("Sharpe", ascending=False).head(10)["Ticker"].tolist()
         mu_sub = train_rets[top_10].mean() * 252
         cov_sub = train_rets[top_10].cov() * 252
@@ -260,7 +258,7 @@ if st.sidebar.button("Rodar Otimização"):
                 st.bar_chart(metrics[metrics["Ticker"].isin(sel_a)].set_index("Ticker")["Sharpe"])
 
         with tab4:
-            st.markdown("### Markowitz (Max Sharpe - Limite 30%)")
+            st.markdown("### Markowitz (Max Sharpe - Livre)")
             st.success(f"Carteira Otimizada: {', '.join(sel_b)}")
             st.bar_chart(df_weights.set_index("Ticker"))
 
@@ -303,4 +301,4 @@ if st.sidebar.button("Rodar Otimização"):
 
 else:
     show_intro()
-    st.info("Clique no botão 'Rodar Otimização' na barra lateral para iniciar os cálculos.")
+    st.info("Clique no botão 'Rodar Otimização' na barra lateral para iniciar os cálculos. 🤑")
