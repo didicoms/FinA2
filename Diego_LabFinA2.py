@@ -21,7 +21,15 @@ st.markdown("**Aluno:** Diego Menezes")
 st.sidebar.header("Parâmetros do Investidor")
 investment_amount = st.sidebar.number_input("Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
 risk_free_annual = st.sidebar.number_input("Taxa Livre de Risco Anual (%)", value=10.75, step=0.1) / 100
-test_days = st.sidebar.number_input("Dias de Backtest (Out-of-Sample)", value=252, step=1)
+
+# ALTERAÇÃO 1: Adicionada a nota explicativa (tooltip)
+test_days = st.sidebar.number_input(
+    "Dias de Backtest (Out-of-Sample)", 
+    value=252, 
+    step=1,
+    help="Dias úteis separados para validar o modelo. Ex: 252 dias ≈ 1 ano útil. O período selecionado acima deve ser maior que este valor para sobrar dados para o treino."
+)
+
 periodo_download = st.sidebar.selectbox("Período de Dados Históricos", ["2y", "5y", "10y"], index=1)
 
 # --- DEFINIÇÃO DOS ATIVOS (Pool de 20 Ativos) ---
@@ -73,6 +81,7 @@ def solve_max_sharpe(mu, cov, rf):
         return -((ret - rf) / (vol + 1e-12))
     
     w0 = np.ones(n)/n
+    # Limite máximo de 30% por ativo
     bounds = [(0.0, 0.30)] * n 
     cons = ({'type':'eq', 'fun': lambda w: np.sum(w) - 1.0},)
     
@@ -92,7 +101,7 @@ def load_data(tickers, period):
     prices = prices.dropna(axis=1, how='all').ffill().bfill()
     return prices
 
-# --- VISUALIZAÇÃO DA INTRODUÇÃO ---
+# --- INTRODUÇÃO ---
 def show_intro():
     st.markdown("""
     ## **1. Introdução e Justificativa dos Ativos**
@@ -134,14 +143,15 @@ def show_intro():
     """)
 
 # --- EXECUÇÃO PRINCIPAL ---
-# ALTERAÇÃO 1: Texto do botão atualizado
 if st.sidebar.button("Rodar Otimização"):
     with st.spinner('Baixando dados e processando modelos...'):
         
         prices = load_data(TICKERS, periodo_download)
         
-        if prices.empty or len(prices) < test_days * 2:
-            st.error("Dados insuficientes.")
+        # ALTERAÇÃO 2: Verificação mais flexível (Backtest + 6 meses de treino)
+        # Permite rodar '2y' com '252' dias de teste sem erro.
+        if prices.empty or len(prices) < test_days + 126:
+            st.error(f"Dados insuficientes. Para um Backtest de {test_days} dias, precisamos de um histórico maior (pelo menos {test_days + 126} dias no total). Tente selecionar '5y' ou diminua os dias de Backtest.")
             st.stop()
             
         train_prices = prices.iloc[:-test_days]
@@ -190,7 +200,7 @@ if st.sidebar.button("Rodar Otimização"):
             sel_a.extend(rest["Ticker"].head(5 - len(sel_a)).tolist())
         sel_a = sel_a[:5]
         
-        # Markowitz
+        # Markowitz (Top 10 -> Top 5 com limite 30%)
         top_10 = metrics.sort_values("Sharpe", ascending=False).head(10)["Ticker"].tolist()
         mu_sub = train_rets[top_10].mean() * 252
         cov_sub = train_rets[top_10].cov() * 252
@@ -218,7 +228,7 @@ if st.sidebar.button("Rodar Otimização"):
         full_cum_b = (1 + full_ret_b).cumprod()
         full_cum_bench = (1 + full_ret_bench).cumprod()
 
-        # --- VISUALIZAÇÃO DE ABAS ---
+        # --- VISUALIZAÇÃO ---
         tab_intro, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "1. Introdução & Ativos", "2. Dados", "3. Correlação", "4. Técnica A (Cluster)", "5. Técnica B (Markowitz)", "6. Backtest", "7. Resultado"
         ])
@@ -292,6 +302,5 @@ if st.sidebar.button("Rodar Otimização"):
                 st.metric("Max Drawdown", f"{dd_bench*100:.2f}%")
 
 else:
-    # ALTERAÇÃO 2: Texto de instrução atualizado
     show_intro()
     st.info("Clique no botão 'Rodar Otimização' na barra lateral para iniciar os cálculos.")
