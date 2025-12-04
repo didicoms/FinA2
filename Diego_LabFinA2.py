@@ -25,7 +25,6 @@ test_days = st.sidebar.number_input("Dias de Backtest (Out-of-Sample)", value=25
 periodo_download = st.sidebar.selectbox("Período de Dados Históricos", ["2y", "5y", "10y"], index=1)
 
 # --- DEFINIÇÃO DOS ATIVOS (Pool de 20 Ativos) ---
-# Corrigido MRFG3 conforme seu texto
 TICKERS = [
     "ITUB4.SA", "BPAC11.SA", "ROXO34.SA", "XPBR31.SA", # Financeiro
     "PETR4.SA", "VALE3.SA", "GGBR4.SA",                # Commodities
@@ -74,7 +73,6 @@ def solve_max_sharpe(mu, cov, rf):
         return -((ret - rf) / (vol + 1e-12))
     
     w0 = np.ones(n)/n
-    # ALTERAÇÃO: Limite máximo de 30% por ativo conforme metodologia
     bounds = [(0.0, 0.30)] * n 
     cons = ({'type':'eq', 'fun': lambda w: np.sum(w) - 1.0},)
     
@@ -94,7 +92,7 @@ def load_data(tickers, period):
     prices = prices.dropna(axis=1, how='all').ffill().bfill()
     return prices
 
-# --- VISUALIZAÇÃO DA INTRODUÇÃO (Texto Personalizado) ---
+# --- VISUALIZAÇÃO DA INTRODUÇÃO ---
 def show_intro():
     st.markdown("""
     ## **1. Introdução e Justificativa dos Ativos**
@@ -136,7 +134,8 @@ def show_intro():
     """)
 
 # --- EXECUÇÃO PRINCIPAL ---
-if st.sidebar.button("Rodar Análise Completa"):
+# ALTERAÇÃO 1: Texto do botão atualizado
+if st.sidebar.button("Rodar Otimização"):
     with st.spinner('Baixando dados e processando modelos...'):
         
         prices = load_data(TICKERS, periodo_download)
@@ -191,14 +190,14 @@ if st.sidebar.button("Rodar Análise Completa"):
             sel_a.extend(rest["Ticker"].head(5 - len(sel_a)).tolist())
         sel_a = sel_a[:5]
         
-        # Markowitz (com restrição de 30%)
+        # Markowitz
         top_10 = metrics.sort_values("Sharpe", ascending=False).head(10)["Ticker"].tolist()
         mu_sub = train_rets[top_10].mean() * 252
         cov_sub = train_rets[top_10].cov() * 252
         w_opt = solve_max_sharpe(mu_sub.values, cov_sub.values, risk_free_annual)
         
         df_weights = pd.DataFrame({"Ticker": top_10, "Peso": w_opt}).sort_values("Peso", ascending=False).head(5)
-        df_weights["Peso"] /= df_weights["Peso"].sum() # Renormaliza para os top 5
+        df_weights["Peso"] /= df_weights["Peso"].sum()
         sel_b = df_weights["Ticker"].tolist()
         weights_b = df_weights["Peso"].values
         
@@ -220,7 +219,6 @@ if st.sidebar.button("Rodar Análise Completa"):
         full_cum_bench = (1 + full_ret_bench).cumprod()
 
         # --- VISUALIZAÇÃO DE ABAS ---
-        # Adicionei a aba "Introdução" como a primeira
         tab_intro, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "1. Introdução & Ativos", "2. Dados", "3. Correlação", "4. Técnica A (Cluster)", "5. Técnica B (Markowitz)", "6. Backtest", "7. Resultado"
         ])
@@ -249,7 +247,6 @@ if st.sidebar.button("Rodar Análise Completa"):
                 ax.set_xlabel("Volatilidade"); ax.set_ylabel("Retorno")
                 st.pyplot(fig)
             with c2:
-                # Gráfico de barras dos ativos selecionados
                 st.bar_chart(metrics[metrics["Ticker"].isin(sel_a)].set_index("Ticker")["Sharpe"])
 
         with tab4:
@@ -295,6 +292,6 @@ if st.sidebar.button("Rodar Análise Completa"):
                 st.metric("Max Drawdown", f"{dd_bench*100:.2f}%")
 
 else:
-    # Mostra a introdução na tela inicial antes de rodar
+    # ALTERAÇÃO 2: Texto de instrução atualizado
     show_intro()
-    st.info("👆 Clique no botão 'Rodar Análise Completa' na barra lateral para iniciar os cálculos.")
+    st.info("Clique no botão 'Rodar Otimização' na barra lateral para iniciar os cálculos.")
