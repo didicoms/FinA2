@@ -8,29 +8,31 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # --- CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="Lab Finanças - Victor Hugo", layout="wide")
+st.set_page_config(page_title="Lab Finanças - Diego Menezes", layout="wide")
 np.random.seed(42) # Garante resultados idênticos
 
 st.title("Lab Finanças: Escolha de Portfólio")
-st.markdown("**Aluno:** Victor Hugo Lemos")
+st.markdown("**Aluno:** Diego Menezes")
 
 # --- BARRA LATERAL ---
 st.sidebar.header("Parâmetros do Investidor")
-investment_amount = st.sidebar.number_input("Valor a Investir (US$)", min_value=100.0, value=10000.0, step=100.0)
-risk_free_annual = st.sidebar.number_input("Taxa Livre de Risco Anual (%)", value=4.0, step=0.1) / 100
+investment_amount = st.sidebar.number_input("Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
+risk_free_annual = st.sidebar.number_input("Taxa Livre de Risco Anual (%)", value=10.75, step=0.1) / 100
 test_days = st.sidebar.number_input("Dias de Backtest (Out-of-Sample)", value=252, step=1)
 periodo_download = st.sidebar.selectbox("Período de Dados Históricos", ["2y", "5y", "10y"], index=1)
 
-# Ativos
-mag7 = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA"]
-us_indices = ["SPY","QQQ","IWM"]
-intl = ["VXUS","IEFA","EEM","ACWX"]
-sectors = ["XLV","XLF","XLE","XLK","XLY"]
-bonds = ["TLT","LQD","HYG"]
-alts = ["GLD","VNQ","DBC"]
-TICKERS = list(set(mag7 + us_indices + intl + sectors + bonds + alts))
+# --- DEFINIÇÃO DOS ATIVOS (Sua Lista Personalizada) ---
+TICKERS = [
+    "ITUB4.SA", "BPAC11.SA", "ROXO34.SA", "XPBR31.SA",
+    "PETR4.SA", "VALE3.SA", "GGBR4.SA", "SBSP3.SA",
+    "EQTL3.SA", "CPLE6.SA", "NEOE3.SA",
+    "JHSF3.SA", "CYRE3.SA", "RAIL3.SA",
+    "MULT3.SA", "IGTI11.SA", "ALOS3.SA",
+    "ABEV3.SA", "ASAI3.SA", "MBRF3.SA"
+]
 
 # --- FUNÇÕES ---
 def calculate_rsi(series, period=14):
@@ -78,25 +80,33 @@ def solve_max_sharpe(mu, cov, rf):
 
 @st.cache_data
 def load_data(tickers, period):
+    # Baixa dados do Yahoo Finance
     data = yf.download(tickers, period=period, progress=False, auto_adjust=True)
+    
+    # Tratamento para garantir que pegamos apenas o preço de Fechamento ('Close')
     try:
         prices = data['Close']
     except KeyError:
+        # Fallback para versões diferentes do yfinance ou estrutura de dados
         if isinstance(data.columns, pd.MultiIndex):
             prices = data.xs('Close', axis=1, level=0, drop_level=True)
         else:
             prices = data
+            
+    # Limpeza de dados: remove colunas vazias e preenche falhas
     prices = prices.dropna(axis=1, how='all').ffill().bfill()
     return prices
 
-# --- EXECUÇÃO ---
+# --- EXECUÇÃO PRINCIPAL ---
 if st.sidebar.button("Rodar Análise Completa"):
     with st.spinner('Processando dados...'):
         
-        # 1. Dados e Split
+        # 1. Carregamento e Divisão dos Dados
         prices = load_data(TICKERS, periodo_download)
-        if len(prices) < test_days * 2:
-            st.error("Dados insuficientes.")
+        
+        # Verifica se há dados suficientes
+        if prices.empty or len(prices) < test_days * 2:
+            st.error("Dados insuficientes para os ativos selecionados. Tente um período maior.")
             st.stop()
             
         train_prices = prices.iloc[:-test_days]
@@ -106,7 +116,7 @@ if st.sidebar.button("Rodar Análise Completa"):
         train_rets = train_prices.pct_change().dropna()
         test_rets = test_prices.pct_change().dropna()
         
-        # 2. Métricas Treino
+        # 2. Cálculo de Métricas (Treino)
         summary = []
         for t in train_prices.columns:
             r = train_rets[t]
@@ -121,11 +131,12 @@ if st.sidebar.button("Rodar Análise Completa"):
         metrics = pd.DataFrame(summary, columns=["Ticker","Ret","Vol","Sharpe","RSI","BB"])
         
         # 3. Processamento das Técnicas
-        # K-Means Prep
+        
+        # --- TÉCNICA A: Clusterização (K-Means) ---
         scaler = StandardScaler()
         X = scaler.fit_transform(metrics[["Ret","Vol","Sharpe","RSI","BB"]].fillna(0))
         
-        # Lógica de seleção do melhor K (Silhouette)
+        # Seleção do melhor K (Silhouette)
         sil_scores_check = []
         k_values = range(2, 11)
         for k in k_values:
@@ -135,32 +146,43 @@ if st.sidebar.button("Rodar Análise Completa"):
         
         best_k = k_values[np.argmax(sil_scores_check)]
         
-        # Rodar Final
+        # Aplica o K-Means final
         kmeans = KMeans(n_clusters=best_k, n_init=50, random_state=42)
         metrics["Cluster"] = kmeans.fit_predict(X)
         
+        # Seleciona o melhor ativo de cada cluster (maior Sharpe)
         sel_a = []
         for c in sorted(metrics["Cluster"].unique()):
             top = metrics[metrics["Cluster"]==c].sort_values("Sharpe", ascending=False).iloc[0]["Ticker"]
             sel_a.append(top)
+        
+        # Completa com os melhores do resto se tiver menos de 5 ativos
         if len(sel_a) < 5:
             rest = metrics[~metrics["Ticker"].isin(sel_a)].sort_values("Sharpe", ascending=False)
             sel_a.extend(rest["Ticker"].head(5 - len(sel_a)).tolist())
         sel_a = sel_a[:5]
         
-        # Markowitz
+        # --- TÉCNICA B: Otimização de Markowitz (Max Sharpe) ---
         top_10 = metrics.sort_values("Sharpe", ascending=False).head(10)["Ticker"].tolist()
         mu_sub = train_rets[top_10].mean() * 252
         cov_sub = train_rets[top_10].cov() * 252
         w_opt = solve_max_sharpe(mu_sub.values, cov_sub.values, risk_free_annual)
+        
         df_weights = pd.DataFrame({"Ticker": top_10, "Peso": w_opt}).sort_values("Peso", ascending=False).head(5)
+        # Re-normaliza os pesos para somar 100% apenas nos top 5
         df_weights["Peso"] /= df_weights["Peso"].sum()
+        
         sel_b = df_weights["Ticker"].tolist()
         weights_b = df_weights["Peso"].values
         
-        # 4. Cálculo de Curvas
+        # 4. Cálculo de Curvas de Retorno (Backtest)
+        # Carteira A (Cluster) - Pesos Iguais (Equal Weight)
         r_test_a = test_rets[sel_a].mean(axis=1).fillna(0)
+        
+        # Carteira B (Markowitz) - Pesos Otimizados
         r_test_b = test_rets[sel_b].mul(weights_b, axis=1).sum(axis=1).fillna(0)
+        
+        # Benchmark (Média de todos os ativos da lista)
         r_test_bench = test_rets.mean(axis=1).fillna(0)
         
         cum_a = (1 + r_test_a).cumprod()
@@ -175,9 +197,9 @@ if st.sidebar.button("Rodar Análise Completa"):
         full_cum_b = (1 + full_ret_b).cumprod()
         full_cum_bench = (1 + full_ret_bench).cumprod()
 
-        # --- VISUALIZAÇÃO (5 ABAS) ---
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "1. Dados", "2. Técnica A", "3. Técnica B", "4. Backtest (Gráficos)", "5. Resultado Financeiro"
+        # --- VISUALIZAÇÃO (6 ABAS) ---
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "1. Dados", "2. Matriz de Correlação", "3. Técnica A (Cluster)", "4. Técnica B (Markowitz)", "5. Backtest (Gráficos)", "6. Resultado Financeiro"
         ])
         
         with tab1:
@@ -185,10 +207,19 @@ if st.sidebar.button("Rodar Análise Completa"):
             st.dataframe(metrics.set_index("Ticker").style.format("{:.2f}"))
 
         with tab2:
-            st.markdown("### Definição Matemática dos Clusters")
-            st.write("O algoritmo testa agrupar os ativos em 2 até 10 grupos. Escolhemos o número que maximiza a coesão (Silhouette).")
+            st.markdown("### Matriz de Correlação (Período de Treino)")
+            st.write("Identifique ativos que se movem em direções opostas (cores azuis) para maximizar a diversificação.")
             
-            # Recalcular inércias para plotagem (para exibir os gráficos)
+            # Calcula a correlação apenas dos retornos de treino
+            corr_matrix = train_rets.corr()
+            
+            # Exibe com gradiente de cores (Vermelho = Correlação Alta, Azul = Baixa/Negativa)
+            st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", axis=None, vmin=-1, vmax=1).format("{:.2f}"))
+
+        with tab3:
+            st.markdown("### Definição Matemática dos Clusters")
+            st.write("O algoritmo testa agrupar os ativos em 2 até 10 grupos baseando-se em risco e retorno.")
+            
             inertias = []
             sil_scores = []
             k_range = range(2, 11)
@@ -218,7 +249,7 @@ if st.sidebar.button("Rodar Análise Completa"):
 
             st.markdown("---")
             st.markdown(f"### Resultado: k={best_k} Clusters")
-            st.success(f"Ativos Selecionados (Maior Sharpe de cada cluster): {', '.join(sel_a)}")
+            st.success(f"Ativos Selecionados (Melhor Sharpe de cada cluster): {', '.join(sel_a)}")
             
             fig, ax = plt.subplots()
             scatter = ax.scatter(metrics["Vol"], metrics["Ret"], c=metrics["Cluster"], cmap="viridis")
@@ -227,20 +258,20 @@ if st.sidebar.button("Rodar Análise Completa"):
             ax.set_title("Mapa Final dos Clusters")
             st.pyplot(fig)
 
-        with tab3:
+        with tab4:
             st.markdown("### Markowitz (Max Sharpe)")
-            st.success(f"Carteira: {', '.join(sel_b)}")
+            st.success(f"Carteira Otimizada: {', '.join(sel_b)}")
             st.bar_chart(df_weights.set_index("Ticker"))
 
-        with tab4:
+        with tab5:
             st.markdown("### Validação Técnica (Backtest)")
             st.write(f"Divisão Treino/Teste: **{split_date.date()}**")
             
-            st.write("#### 1. Zoom no Período de Teste (Out-of-Sample)")
+            st.write("#### 1. Performance no Período de Teste (Out-of-Sample)")
             fig_zoom, ax_z = plt.subplots(figsize=(10, 4))
-            ax_z.plot(cum_a.index, cum_a, label="Cluster")
-            ax_z.plot(cum_b.index, cum_b, label="Markowitz")
-            ax_z.plot(cum_bench.index, cum_bench, label="Benchmark", linestyle="--", color="gray")
+            ax_z.plot(cum_a.index, cum_a, label="Técnica A (Cluster)")
+            ax_z.plot(cum_b.index, cum_b, label="Técnica B (Markowitz)")
+            ax_z.plot(cum_bench.index, cum_bench, label="Benchmark (Média)", linestyle="--", color="gray")
             ax_z.legend(); ax_z.grid(True, alpha=0.3)
             st.pyplot(fig_zoom)
             
@@ -249,12 +280,12 @@ if st.sidebar.button("Rodar Análise Completa"):
             ax_f.plot(full_cum_a.index, full_cum_a, label="Cluster")
             ax_f.plot(full_cum_b.index, full_cum_b, label="Markowitz")
             ax_f.plot(full_cum_bench.index, full_cum_bench, label="Benchmark", linestyle="--", color="gray", alpha=0.5)
-            ax_f.axvline(x=split_date, color='red', linestyle=':', label="Divisão")
+            ax_f.axvline(x=split_date, color='red', linestyle=':', label="Separação Treino/Teste")
             ax_f.legend(); ax_f.grid(True, alpha=0.3)
             st.pyplot(fig_full)
 
-        with tab5:
-            st.markdown(f"### Resultado para o Investidor (US$ {investment_amount:,.2f})")
+        with tab6:
+            st.markdown(f"### Resultado para o Investidor (R$ {investment_amount:,.2f})")
             
             final_a = investment_amount * cum_a.iloc[-1]
             final_b = investment_amount * cum_b.iloc[-1]
@@ -270,16 +301,16 @@ if st.sidebar.button("Rodar Análise Completa"):
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.info("**Técnica A (Cluster)**")
-                st.metric("Saldo Final", f"${final_a:,.2f}", f"{lucro_a:,.2f}")
-                st.metric("Max Drawdown", f"{dd_a*100:.2f}%")
+                st.metric("Saldo Final", f"R$ {final_a:,.2f}", f"{lucro_a:,.2f}")
+                st.metric("Queda Máxima (Drawdown)", f"{dd_a*100:.2f}%")
             with c2:
                 st.info("**Técnica B (Markowitz)**")
-                st.metric("Saldo Final", f"${final_b:,.2f}", f"{lucro_b:,.2f}")
-                st.metric("Max Drawdown", f"{dd_b*100:.2f}%")
+                st.metric("Saldo Final", f"R$ {final_b:,.2f}", f"{lucro_b:,.2f}")
+                st.metric("Queda Máxima (Drawdown)", f"{dd_b*100:.2f}%")
             with c3:
                 st.warning("**Benchmark**")
-                st.metric("Saldo Final", f"${final_bench:,.2f}")
-                st.metric("Max Drawdown", f"{dd_bench*100:.2f}%")
+                st.metric("Saldo Final", f"R$ {final_bench:,.2f}")
+                st.metric("Queda Máxima (Drawdown)", f"{dd_bench*100:.2f}%")
 
 else:
-    st.info("👆 Clique no botão 'Rodar Análise Completa' para iniciar.")
+    st.info("👆 Clique no botão 'Rodar Análise Completa' na barra lateral para iniciar.")
