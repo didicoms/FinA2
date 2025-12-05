@@ -26,10 +26,12 @@ test_days = st.sidebar.number_input(
     "Dias de Backtest (Out-of-Sample)", 
     value=252, 
     step=1,
-    help="Dias úteis separados para validar o modelo. Ex: 252 dias ≈ 1 ano útil. O período selecionado acima deve ser maior que este valor para sobrar dados para o treino."
+    help="Dias úteis separados para validar o modelo. Ex: 252 dias ≈ 1 ano útil. O período selecionado abaixo deve ser suficiente para cobrir este teste + o treino."
 )
 
-periodo_download = st.sidebar.selectbox("Período de Dados Históricos", ["2y", "5y", "10y"], index=1)
+# ALTERAÇÃO 1: Slider (Barrinha) para escolher os anos (de 2 a 10)
+anos_historico = st.sidebar.slider("Anos de Dados Históricos", min_value=2, max_value=10, value=5)
+periodo_download = f"{anos_historico}y" # Converte o número do slider para string (ex: "5y")
 
 # --- DEFINIÇÃO DOS ATIVOS (Pool de 20 Ativos) ---
 TICKERS = [
@@ -80,8 +82,11 @@ def solve_max_sharpe(mu, cov, rf):
         return -((ret - rf) / (vol + 1e-12))
     
     w0 = np.ones(n)/n
-    # ALTERAÇÃO: Removida a trava de 30%. Agora permite até 100% (1.0)
-    bounds = [(0.0, 1.0)] * n 
+    
+    # ALTERAÇÃO 2: Limites definidos entre 5% (0.05) e 100% (1.0)
+    # Isso obriga o algoritmo a colocar pelo menos 5% em cada um dos Top 10 ativos.
+    bounds = [(0.05, 1.0)] * n 
+    
     cons = ({'type':'eq', 'fun': lambda w: np.sum(w) - 1.0},)
     
     res = minimize(neg_sharpe, w0, method='SLSQP', bounds=bounds, constraints=cons)
@@ -137,19 +142,19 @@ def show_intro():
 
     1.  **Clusterização (Machine Learning):** Utilização do algoritmo *K-Means* para agrupar os ativos com base em risco (Volatilidade) e retorno.
     2.  **Stock Picking Quantitativo:** Seleção do melhor ativo de cada cluster para garantir diversificação estrutural.
-    3.  **Otimização de Markowitz:** Definição matemática dos pesos ideais (Max Sharpe) sem restrição de concentração, permitindo alocação livre nos melhores ativos.
+    3.  **Otimização de Markowitz:** Definição dos pesos ideais (Max Sharpe) com **restrição mínima de 5% por ativo** para evitar que papéis selecionados fiquem zerados na carteira.
     4.  **Backtesting (Walk-Forward):** Validação da estratégia "fora da amostra" comparando com o Benchmark (Média do Universo).
     """)
 
 # --- EXECUÇÃO PRINCIPAL ---
 if st.sidebar.button("Rodar Otimização"):
-    with st.spinner('Baixando dados e processando modelos...'):
+    with st.spinner(f'Baixando {anos_historico} anos de dados e processando...'):
         
         prices = load_data(TICKERS, periodo_download)
         
         # Verificação flexível de dados
         if prices.empty or len(prices) < test_days + 126:
-            st.error(f"Dados insuficientes. Para um Backtest de {test_days} dias, precisamos de um histórico maior (pelo menos {test_days + 126} dias no total). Tente selecionar '5y' ou diminua os dias de Backtest.")
+            st.error(f"Dados insuficientes. Para um Backtest de {test_days} dias, precisamos de um histórico maior (pelo menos {test_days + 126} dias no total). Tente aumentar os anos na barra lateral ou diminuir os dias de Backtest.")
             st.stop()
             
         train_prices = prices.iloc[:-test_days]
@@ -198,7 +203,7 @@ if st.sidebar.button("Rodar Otimização"):
             sel_a.extend(rest["Ticker"].head(5 - len(sel_a)).tolist())
         sel_a = sel_a[:5]
         
-        # Markowitz (Livre)
+        # Markowitz (Top 10)
         top_10 = metrics.sort_values("Sharpe", ascending=False).head(10)["Ticker"].tolist()
         mu_sub = train_rets[top_10].mean() * 252
         cov_sub = train_rets[top_10].cov() * 252
@@ -258,7 +263,7 @@ if st.sidebar.button("Rodar Otimização"):
                 st.bar_chart(metrics[metrics["Ticker"].isin(sel_a)].set_index("Ticker")["Sharpe"])
 
         with tab4:
-            st.markdown("### Markowitz (Max Sharpe - Livre)")
+            st.markdown("### Markowitz (Max Sharpe - Mín. 5% por ativo)")
             st.success(f"Carteira Otimizada: {', '.join(sel_b)}")
             st.bar_chart(df_weights.set_index("Ticker"))
 
