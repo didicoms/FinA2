@@ -14,84 +14,7 @@ import seaborn as sns
 st.set_page_config(page_title="Lab Finanças - Diego Menezes", layout="wide")
 np.random.seed(42)
 
-# --- FUNÇÃO DE INTRODUÇÃO (Agora ajustada para a Barra Lateral) ---
-def show_side_intro():
-    st.sidebar.title("📖 Sobre o Projeto")
-    st.sidebar.markdown("**Aluno:** Diego Menezes")
-    
-    st.sidebar.info("""
-    **Objetivo:** Construir uma carteira de investimentos otimizada contendo 5 ativos, selecionados a partir de um universo inicial de 20 empresas.
-    """)
-    
-    with st.sidebar.expander("1. Justificativa dos Ativos", expanded=False):
-        st.markdown("""
-        **Setor Financeiro:** `ITUB4`, `BPAC11`, `ROXO34`, `XPBR31`
-        *(Crédito e Inovação)*
-        
-        **Commodities:** `VALE3`, `GGBR4`, `PETR4`
-        *(Proteção Cambial e Ciclos)*
-        
-        **Utilities:** `SBSP3`, `EQTL3`, `CPLE6`, `NEOE3`, `RAIL3`
-        *(Defensivos e Inflação)*
-        
-        **Real Estate:** `CYRE3`, `JHSF3`, `MULT3`, `IGTI11`, `ALOS3`
-        *(Juros Longos)*
-        
-        **Varejo:** `ABEV3`, `MRFG3`, `ASAI3`
-        *(Consumo Essencial)*
-        """)
-
-    with st.sidebar.expander("2. Metodologia Aplicada", expanded=True):
-        st.markdown("""
-        1.  **Clusterização (K-Means):** Agrupa ativos por perfil de risco/retorno para garantir diversificação estrutural.
-        2.  **Markowitz (Max Sharpe):** Otimização matemática buscando a carteira mais eficiente (com trava mínima de 5% por ativo).
-        3.  **Monte Carlo:** Simulação de 2.000 cenários para desenhar a Fronteira Eficiente.
-        4.  **Backtesting:** Validação com dados passados que o modelo "não viu" (Out-of-Sample).
-        """)
-    
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Laboratório de Finanças Quantitativas")
-
-# --- EXECUÇÃO DA BARRA LATERAL (TEXTO) ---
-show_side_intro()
-
-# --- TÍTULO PRINCIPAL ---
-st.title("Lab Finanças: Construção de Portfólio Otimizado")
-
-# --- PAINEL DE CONTROLE (INPUTS NO CORPO PRINCIPAL) ---
-st.markdown("### ⚙️ Parâmetros da Simulação")
-
-# Cria 4 colunas para os inputs ficarem lado a lado
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    investment_amount = st.number_input("💰 Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
-
-with col2:
-    risk_free_annual = st.number_input("📈 Taxa Livre de Risco (%)", value=10.75, step=0.1) / 100
-
-with col3:
-    test_days = st.number_input(
-        "📅 Dias de Backtest", 
-        value=252, 
-        step=1,
-        help="252 dias ≈ 1 ano útil de teste."
-    )
-
-with col4:
-    anos_historico = st.slider("⏳ Histórico (Anos)", min_value=2, max_value=10, value=5)
-    periodo_download = f"{anos_historico}y"
-
-# --- DEFINIÇÃO DOS ATIVOS ---
-TICKERS = [
-    "ITUB4.SA", "BPAC11.SA", "ROXO34.SA", "XPBR31.SA", 
-    "PETR4.SA", "VALE3.SA", "GGBR4.SA",                
-    "SBSP3.SA", "EQTL3.SA", "CPLE6.SA", "NEOE3.SA", "RAIL3.SA", 
-    "JHSF3.SA", "CYRE3.SA", "MULT3.SA", "IGTI11.SA", "ALOS3.SA", 
-    "ABEV3.SA", "ASAI3.SA", "MRFG3.SA"                 
-]
-
-# --- FUNÇÕES TÉCNICAS ---
+# --- FUNÇÕES TÉCNICAS (Cálculos) ---
 def calculate_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -148,14 +71,78 @@ def load_data(tickers, period):
     prices = prices.dropna(axis=1, how='all').ffill().bfill()
     return prices
 
-# --- BOTÃO E LÓGICA PRINCIPAL ---
+# --- DEFINIÇÃO DOS ATIVOS ---
+TICKERS = [
+    "ITUB4.SA", "BPAC11.SA", "ROXO34.SA", "XPBR31.SA", 
+    "PETR4.SA", "VALE3.SA", "GGBR4.SA",                
+    "SBSP3.SA", "EQTL3.SA", "CPLE6.SA", "NEOE3.SA", "RAIL3.SA", 
+    "JHSF3.SA", "CYRE3.SA", "MULT3.SA", "IGTI11.SA", "ALOS3.SA", 
+    "ABEV3.SA", "ASAI3.SA", "MRFG3.SA"                 
+]
+
+# --- UI: BARRA LATERAL (Apenas Créditos) ---
+st.sidebar.markdown("### Lab Finanças")
+st.sidebar.info("**Aluno:** Diego Menezes")
+st.sidebar.markdown("---")
+st.sidebar.caption("Ferramenta desenvolvida para otimização de portfólios utilizando K-Means e Markowitz.")
+
+# --- UI: TÍTULO E PARÂMETROS (TOPO) ---
+st.title("Lab Finanças: Construção de Portfólio Otimizado")
+st.markdown("### ⚙️ Parâmetros da Simulação")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    investment_amount = st.number_input("💰 Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
+with col2:
+    risk_free_annual = st.number_input("📈 Taxa Livre de Risco (%)", value=10.75, step=0.1) / 100
+with col3:
+    test_days = st.number_input("📅 Dias de Backtest", value=252, step=1, help="252 dias ≈ 1 ano útil de teste.")
+with col4:
+    anos_historico = st.slider("⏳ Histórico (Anos)", min_value=2, max_value=10, value=5)
+    periodo_download = f"{anos_historico}y"
+
 st.markdown("---")
 
-# Botão centralizado e grande
+# --- UI: JUSTIFICATIVA DOS ATIVOS (CORPO PRINCIPAL) ---
+# Aqui está o texto explicativo visível na página inicial antes de rodar
+with st.expander("📖 Introdução e Justificativa dos Ativos (Clique para recolher)", expanded=True):
+    st.markdown("""
+    ### **Objetivo do Trabalho**
+    Construir uma carteira de investimentos otimizada contendo 5 ativos, selecionados a partir de um universo inicial de 20 empresas listadas na B3 ou BDRs.
+
+    ### **Critério de Escolha do Universo (Pool de 20 ativos)**
+    Para garantir insumos de qualidade para o algoritmo, o *pool* inicial foi constituído buscando **diversificação setorial** e **representatividade econômica**.
+    
+    Os ativos foram divididos nos seguintes macro-setores:
+
+    * **🏦 Setor Financeiro (Bancos e Fintechs):**
+        * `ITUB4.SA` (Itaú), `BPAC11.SA` (BTG Pactual), `ROXO34.SA` (Nubank), `XPBR31.SA` (XP Inc).
+        * *Justificativa:* Mescla a solidez dos bancões com o crescimento das fintechs.
+
+    * **🛢️ Commodities e Materiais Básicos:**
+        * `VALE3.SA` (Minério), `GGBR4.SA` (Siderurgia), `PETR4.SA` (Petróleo).
+        * *Justificativa:* Proteção cambial implícita (receitas em dólar) e exposição a ciclos globais.
+
+    * **⚡ Utilities e Infraestrutura:**
+        * `SBSP3.SA` (Sabesp), `EQTL3.SA` (Equatorial), `CPLE6.SA` (Copel), `NEOE3.SA` (Neoenergia), `RAIL3.SA` (Rumo).
+        * *Justificativa:* Setores defensivos com receitas previsíveis corrigidas pela inflação.
+
+    * **🏗️ Real Estate (Construção e Shoppings):**
+        * `CYRE3.SA` (Cyrela), `JHSF3.SA` (Alta Renda), `MULT3.SA` (Multiplan), `IGTI11.SA` (Iguatemi), `ALOS3.SA` (Allos).
+        * *Justificativa:* Ativos sensíveis à queda de juros (fechamento da curva futura).
+
+    * **🛒 Consumo e Varejo:**
+        * `ABEV3.SA` (Ambev), `MRFG3.SA` (Marfrig), `ASAI3.SA` (Assaí).
+        * *Justificativa:* Consumo essencial e resiliente (bebidas e alimentos).
+    """)
+
+# --- UI: BOTÃO DE AÇÃO ---
+st.markdown("<br>", unsafe_allow_html=True)
 col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
 with col_btn_2:
     run_btn = st.button("🚀 Rodar Otimização e Gerar Portfólio", type="primary", use_container_width=True)
 
+# --- LÓGICA DE PROCESSAMENTO ---
 if run_btn:
     with st.spinner(f'Baixando {anos_historico} anos de dados, treinando K-Means e otimizando Markowitz...'):
         
@@ -244,7 +231,7 @@ if run_btn:
         cum_b = (1 + r_test_b).cumprod()
         cum_bench = (1 + r_test_bench).cumprod()
         
-        # --- VISUALIZAÇÃO ---
+        # --- VISUALIZAÇÃO DOS RESULTADOS ---
         st.success("✅ Otimização Finalizada com Sucesso!")
         
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -275,6 +262,7 @@ if run_btn:
 
         with tab4:
             st.markdown("### Otimização de Markowitz & Fronteira Eficiente")
+            st.caption("Simulação de 2.000 portfólios aleatórios (Monte Carlo). A estrela vermelha indica o ponto ótimo.")
             col_graph, col_weights = st.columns([2, 1])
             with col_graph:
                 fig_mc, ax_mc = plt.subplots(figsize=(8,5))
@@ -286,7 +274,7 @@ if run_btn:
                 ax_mc.legend()
                 st.pyplot(fig_mc)
             with col_weights:
-                st.write("**Carteira Otimizada:**")
+                st.write("**Carteira Otimizada (Pesos):**")
                 st.dataframe(df_weights.set_index("Ticker").style.format("{:.1%}"))
 
         with tab5:
