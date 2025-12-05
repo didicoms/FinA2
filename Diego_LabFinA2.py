@@ -208,7 +208,7 @@ if run_btn:
         weights_b = df_weights["Peso"].values
         
         # 3. Monte Carlo
-        num_simulations = 2000
+        num_simulations = 10000
         sim_results = np.zeros((3, num_simulations))
         for i in range(num_simulations):
             w = np.random.random(len(top_10))
