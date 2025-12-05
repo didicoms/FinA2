@@ -14,23 +14,73 @@ import seaborn as sns
 st.set_page_config(page_title="Lab Finanças - Diego Menezes", layout="wide")
 np.random.seed(42)
 
+# --- FUNÇÃO DE INTRODUÇÃO (Agora ajustada para a Barra Lateral) ---
+def show_side_intro():
+    st.sidebar.title("📖 Sobre o Projeto")
+    st.sidebar.markdown("**Aluno:** Diego Menezes")
+    
+    st.sidebar.info("""
+    **Objetivo:** Construir uma carteira de investimentos otimizada contendo 5 ativos, selecionados a partir de um universo inicial de 20 empresas.
+    """)
+    
+    with st.sidebar.expander("1. Justificativa dos Ativos", expanded=False):
+        st.markdown("""
+        **Setor Financeiro:** `ITUB4`, `BPAC11`, `ROXO34`, `XPBR31`
+        *(Crédito e Inovação)*
+        
+        **Commodities:** `VALE3`, `GGBR4`, `PETR4`
+        *(Proteção Cambial e Ciclos)*
+        
+        **Utilities:** `SBSP3`, `EQTL3`, `CPLE6`, `NEOE3`, `RAIL3`
+        *(Defensivos e Inflação)*
+        
+        **Real Estate:** `CYRE3`, `JHSF3`, `MULT3`, `IGTI11`, `ALOS3`
+        *(Juros Longos)*
+        
+        **Varejo:** `ABEV3`, `MRFG3`, `ASAI3`
+        *(Consumo Essencial)*
+        """)
+
+    with st.sidebar.expander("2. Metodologia Aplicada", expanded=True):
+        st.markdown("""
+        1.  **Clusterização (K-Means):** Agrupa ativos por perfil de risco/retorno para garantir diversificação estrutural.
+        2.  **Markowitz (Max Sharpe):** Otimização matemática buscando a carteira mais eficiente (com trava mínima de 5% por ativo).
+        3.  **Monte Carlo:** Simulação de 2.000 cenários para desenhar a Fronteira Eficiente.
+        4.  **Backtesting:** Validação com dados passados que o modelo "não viu" (Out-of-Sample).
+        """)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Laboratório de Finanças Quantitativas")
+
+# --- EXECUÇÃO DA BARRA LATERAL (TEXTO) ---
+show_side_intro()
+
+# --- TÍTULO PRINCIPAL ---
 st.title("Lab Finanças: Construção de Portfólio Otimizado")
-st.markdown("**Aluno:** Diego Menezes")
 
-# --- BARRA LATERAL ---
-st.sidebar.header("Parâmetros do Investidor")
-investment_amount = st.sidebar.number_input("Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
-risk_free_annual = st.sidebar.number_input("Taxa Livre de Risco Anual (%)", value=10.75, step=0.1) / 100
+# --- PAINEL DE CONTROLE (INPUTS NO CORPO PRINCIPAL) ---
+st.markdown("### ⚙️ Parâmetros da Simulação")
 
-test_days = st.sidebar.number_input(
-    "Dias de Backtest (Out-of-Sample)", 
-    value=252, 
-    step=1,
-    help="Dias úteis separados para validar o modelo. Ex: 252 dias ≈ 1 ano útil."
-)
+# Cria 4 colunas para os inputs ficarem lado a lado
+col1, col2, col3, col4 = st.columns(4)
 
-anos_historico = st.sidebar.slider("Anos de Dados Históricos", min_value=2, max_value=10, value=5)
-periodo_download = f"{anos_historico}y"
+with col1:
+    investment_amount = st.number_input("💰 Valor a Investir (R$)", min_value=100.0, value=10000.0, step=100.0)
+
+with col2:
+    risk_free_annual = st.number_input("📈 Taxa Livre de Risco (%)", value=10.75, step=0.1) / 100
+
+with col3:
+    test_days = st.number_input(
+        "📅 Dias de Backtest", 
+        value=252, 
+        step=1,
+        help="252 dias ≈ 1 ano útil de teste."
+    )
+
+with col4:
+    anos_historico = st.slider("⏳ Histórico (Anos)", min_value=2, max_value=10, value=5)
+    periodo_download = f"{anos_historico}y"
 
 # --- DEFINIÇÃO DOS ATIVOS ---
 TICKERS = [
@@ -41,7 +91,7 @@ TICKERS = [
     "ABEV3.SA", "ASAI3.SA", "MRFG3.SA"                 
 ]
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES TÉCNICAS ---
 def calculate_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -79,7 +129,6 @@ def solve_max_sharpe(mu, cov, rf):
         ret = np.dot(w, mu)
         vol = np.sqrt(np.dot(w, np.dot(cov, w)))
         return -((ret - rf) / (vol + 1e-12))
-    
     w0 = np.ones(n)/n
     bounds = [(0.05, 1.0)] * n 
     cons = ({'type':'eq', 'fun': lambda w: np.sum(w) - 1.0},)
@@ -99,35 +148,21 @@ def load_data(tickers, period):
     prices = prices.dropna(axis=1, how='all').ffill().bfill()
     return prices
 
-def show_intro():
-    st.markdown("""
-    ## **1. Introdução e Justificativa dos Ativos**
-    O objetivo deste trabalho é construir uma carteira de investimentos otimizada contendo 5 ativos, selecionados a partir de um universo inicial de 20 empresas.
-    
-    ### **Critério de Escolha do Universo**
-    O *pool* inicial foi constituído buscando **diversificação setorial** e **representatividade econômica**.
-    * **Financeiro:** `ITUB4`, `BPAC11`, `ROXO34`, `XPBR31`
-    * **Commodities:** `VALE3`, `GGBR4`, `PETR4`
-    * **Utilities:** `SBSP3`, `EQTL3`, `CPLE6`, `NEOE3`, `RAIL3`
-    * **Real Estate:** `CYRE3`, `JHSF3`, `MULT3`, `IGTI11`, `ALOS3`
-    * **Varejo:** `ABEV3`, `MRFG3`, `ASAI3`
+# --- BOTÃO E LÓGICA PRINCIPAL ---
+st.markdown("---")
 
-    ---
-    ### **Metodologia Aplicada**
-    1.  **Clusterização (K-Means):** Agrupamento por perfil de risco/retorno.
-    2.  **Otimização de Markowitz:** Maximização do Sharpe Ratio (Min. 5% por ativo).
-    3.  **Simulação de Monte Carlo:** Geração de cenários aleatórios para visualizar a Fronteira Eficiente.
-    4.  **Backtesting:** Validação "Out-of-Sample".
-    """)
+# Botão centralizado e grande
+col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
+with col_btn_2:
+    run_btn = st.button("🚀 Rodar Otimização e Gerar Portfólio", type="primary", use_container_width=True)
 
-# --- EXECUÇÃO PRINCIPAL ---
-if st.sidebar.button("Rodar Otimização"):
-    with st.spinner(f'Baixando {anos_historico} anos de dados e processando...'):
+if run_btn:
+    with st.spinner(f'Baixando {anos_historico} anos de dados, treinando K-Means e otimizando Markowitz...'):
         
         prices = load_data(TICKERS, periodo_download)
         
         if prices.empty or len(prices) < test_days + 126:
-            st.error(f"Dados insuficientes. Tente aumentar os anos na barra lateral.")
+            st.error(f"Dados insuficientes. Tente aumentar o Histórico (Anos) no painel acima.")
             st.stop()
             
         train_prices = prices.iloc[:-test_days]
@@ -185,11 +220,9 @@ if st.sidebar.button("Rodar Otimização"):
         sel_b = df_weights["Ticker"].tolist()
         weights_b = df_weights["Peso"].values
         
-        # 3. Monte Carlo (NOVO DIFERENCIAL)
-        # Gera 2000 portfólios aleatórios com os ativos do Top 10 para desenhar a fronteira
+        # 3. Monte Carlo
         num_simulations = 2000
         sim_results = np.zeros((3, num_simulations))
-        
         for i in range(num_simulations):
             w = np.random.random(len(top_10))
             w /= np.sum(w)
@@ -197,9 +230,8 @@ if st.sidebar.button("Rodar Otimização"):
             p_vol = np.sqrt(np.dot(w.T, np.dot(cov_sub.values, w)))
             sim_results[0,i] = p_ret
             sim_results[1,i] = p_vol
-            sim_results[2,i] = (p_ret - risk_free_annual) / p_vol # Sharpe
+            sim_results[2,i] = (p_ret - risk_free_annual) / p_vol
 
-        # Métricas do Markowitz Otimizado (para plotar a estrela)
         opt_ret = np.sum(w_opt * mu_sub.values)
         opt_vol = np.sqrt(np.dot(w_opt.T, np.dot(cov_sub.values, w_opt)))
         
@@ -213,25 +245,24 @@ if st.sidebar.button("Rodar Otimização"):
         cum_bench = (1 + r_test_bench).cumprod()
         
         # --- VISUALIZAÇÃO ---
-        tab_intro, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "1. Introdução", "2. Dados", "3. Correlação", "4. Clusterização", "5. Markowitz & Fronteira", "6. Backtest", "7. Resultado Final"
+        st.success("✅ Otimização Finalizada com Sucesso!")
+        
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "📊 Dados do Mercado", "🔥 Correlação", "🤖 Clusterização (K-Means)", "📈 Markowitz & Fronteira", "📅 Backtest (Validação)", "🏆 Resultado Final"
         ])
         
-        with tab_intro:
-            show_intro()
-
         with tab1:
-            st.markdown("### Universo de Ativos e Dados de Treino")
+            st.markdown("### Universo de Ativos e Métricas de Treino")
             st.dataframe(metrics.set_index("Ticker").style.format("{:.2f}"))
 
         with tab2:
-            st.markdown("### Matriz de Correlação")
+            st.markdown("### Matriz de Correlação (Heatmap)")
             corr_matrix = train_rets.corr()
             st.dataframe(corr_matrix.style.background_gradient(cmap="coolwarm", axis=None, vmin=-1, vmax=1).format("{:.2f}"))
 
         with tab3:
-            st.markdown(f"### Resultado: k={best_k} Clusters")
-            st.success(f"Ativos Selecionados: {', '.join(sel_a)}")
+            st.markdown(f"### Inteligência Artificial: k={best_k} Clusters Identificados")
+            st.info(f"**Ativos Selecionados pela IA:** {', '.join(sel_a)}")
             c1, c2 = st.columns(2)
             with c1:
                 fig, ax = plt.subplots()
@@ -243,44 +274,36 @@ if st.sidebar.button("Rodar Otimização"):
                 st.bar_chart(metrics[metrics["Ticker"].isin(sel_a)].set_index("Ticker")["Sharpe"])
 
         with tab4:
-            st.markdown("### Markowitz e Fronteira Eficiente (Simulação de Monte Carlo)")
-            st.info("O gráfico abaixo mostra 2.000 simulações de portfólios aleatórios (pontos cinza). A estrela vermelha indica a carteira otimizada matemática.")
-            
+            st.markdown("### Otimização de Markowitz & Fronteira Eficiente")
             col_graph, col_weights = st.columns([2, 1])
-            
             with col_graph:
                 fig_mc, ax_mc = plt.subplots(figsize=(8,5))
                 sc_mc = ax_mc.scatter(sim_results[1,:], sim_results[0,:], c=sim_results[2,:], cmap='viridis', alpha=0.3, s=10)
                 plt.colorbar(sc_mc, label='Sharpe Ratio')
-                # Plota o ponto otimizado
                 ax_mc.scatter(opt_vol, opt_ret, c='red', s=200, marker='*', label='Portfólio Otimizado')
                 ax_mc.set_xlabel('Volatilidade (Risco)')
                 ax_mc.set_ylabel('Retorno Esperado')
-                ax_mc.set_title('Fronteira Eficiente')
                 ax_mc.legend()
                 st.pyplot(fig_mc)
-            
             with col_weights:
-                st.write("**Pesos Otimizados:**")
+                st.write("**Carteira Otimizada:**")
                 st.dataframe(df_weights.set_index("Ticker").style.format("{:.1%}"))
 
         with tab5:
-            st.markdown("### Validação Técnica (Backtest)")
+            st.markdown("### Teste Cego (Out-of-Sample)")
             fig_zoom, ax_z = plt.subplots(figsize=(10, 4))
-            ax_z.plot(cum_a.index, cum_a, label="Cluster")
-            ax_z.plot(cum_b.index, cum_b, label="Markowitz")
-            ax_z.plot(cum_bench.index, cum_bench, label="Benchmark", linestyle="--", color="gray")
+            ax_z.plot(cum_a.index, cum_a, label="Cluster (IA)")
+            ax_z.plot(cum_b.index, cum_b, label="Markowitz (Math)")
+            ax_z.plot(cum_bench.index, cum_bench, label="Benchmark (Média)", linestyle="--", color="gray")
             ax_z.legend(); ax_z.grid(True, alpha=0.3)
             st.pyplot(fig_zoom)
 
         with tab6:
-            st.markdown(f"### Resultado Consolidado (R$ {investment_amount:,.2f})")
-            
+            st.markdown(f"### Relatório de Performance (R$ {investment_amount:,.2f})")
             final_a = investment_amount * cum_a.iloc[-1]
             final_b = investment_amount * cum_b.iloc[-1]
             final_bench = investment_amount * cum_bench.iloc[-1]
             
-            # Tabela Resumo (NOVO DIFERENCIAL)
             summary_data = {
                 "Estratégia": ["Técnica A (Cluster)", "Técnica B (Markowitz)", "Benchmark"],
                 "Saldo Final (R$)": [final_a, final_b, final_bench],
@@ -289,19 +312,13 @@ if st.sidebar.button("Rodar Otimização"):
             }
             df_summary = pd.DataFrame(summary_data).set_index("Estratégia")
             
-            # Mostra a tabela bonita
             st.table(df_summary.style.format({
                 "Saldo Final (R$)": "R$ {:,.2f}",
                 "Retorno Total (%)": "{:+.2f}%",
                 "Max Drawdown (%)": "{:.2f}%"
             }))
 
-            # Cards visuais
             c1, c2, c3 = st.columns(3)
             c1.metric("Cluster (Saldo)", f"R$ {final_a:,.2f}", f"{summary_data['Retorno Total (%)'][0]:.2f}%")
             c2.metric("Markowitz (Saldo)", f"R$ {final_b:,.2f}", f"{summary_data['Retorno Total (%)'][1]:.2f}%")
             c3.metric("Benchmark (Saldo)", f"R$ {final_bench:,.2f}", f"{summary_data['Retorno Total (%)'][2]:.2f}%")
-
-else:
-    show_intro()
-    st.info("Clique no botão 'Rodar Otimização' na barra lateral para iniciar os cálculos.")
